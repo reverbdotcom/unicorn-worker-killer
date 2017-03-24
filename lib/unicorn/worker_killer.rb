@@ -12,7 +12,7 @@ module Unicorn::WorkerKiller
   # send TERM signals until `configuration.max_term`. Finally, send a KILL
   # signal. A single signal is sent per request.
   # @see http://unicorn.bogomips.org/SIGNALS.html
-  def self.kill_self(logger, start_time)
+  def self.kill_self(logger, start_time, memory:nil, requests:nil)
     alive_sec = (Time.now - start_time).round
     worker_pid = Process.pid
 
@@ -23,7 +23,7 @@ module Unicorn::WorkerKiller
     sig = :TERM if @@kill_attempts > configuration.max_quit
     sig = :KILL if @@kill_attempts > configuration.max_term
 
-    configuration.callback.call(sig)
+    configuration.callback.call(sig, memory, requests)
 
     logger.warn "#{self} send SIG#{sig} (pid: #{worker_pid}) alive: #{alive_sec} sec (trial #{@@kill_attempts})"
     Process.kill sig, worker_pid
@@ -63,7 +63,7 @@ module Unicorn::WorkerKiller
         logger.info "#{self}: worker (pid: #{Process.pid}) using #{rss} bytes." if @_verbose
         if rss > @_worker_memory_limit
           logger.warn "#{self}: worker (pid: #{Process.pid}) exceeds memory limit (#{rss} bytes > #{@_worker_memory_limit} bytes)"
-          Unicorn::WorkerKiller.kill_self(logger, @_worker_process_start)
+          Unicorn::WorkerKiller.kill_self(logger, @_worker_process_start, memory: rss)
         end
         @_worker_check_count = 0
       end
@@ -102,7 +102,7 @@ module Unicorn::WorkerKiller
 
       if (@_worker_cur_requests -= 1) <= 0
         logger.warn "#{self}: worker (pid: #{Process.pid}) exceeds max number of requests (limit: #{@_worker_max_requests})"
-        Unicorn::WorkerKiller.kill_self(logger, @_worker_process_start)
+        Unicorn::WorkerKiller.kill_self(logger, @_worker_process_start, requests: @_worker_cur_requests)
       end
     end
   end
